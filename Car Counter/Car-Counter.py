@@ -4,6 +4,8 @@ from ultralytics import YOLO
 import math
 from sort import *
 
+# from classname import classNames
+
 
 cap = cv2.VideoCapture("C:/PROFO/object detection/Videos/cars.mp4")
 
@@ -92,15 +94,30 @@ classNames = [
     "toothbrush",
 ]
 
+
 mask = cv2.imread(
     "C:\PROFO\object detection\Projects\Object-Detection\Car Counter\mask.png"
 )
 
+tracker = Sort(max_age=20, min_hits=3, iou_threshold=0.3)
+
+limits = [400, 297, 673, 297]
+totalcounts = []
 
 while True:
     success, img = cap.read()
     imgregion = cv2.bitwise_and(img, mask)
+
+    imgGraphics = cv2.imread(
+        "C:\PROFO\object detection\Projects\Object-Detection\Car Counter\graphics.png",
+        cv2.IMREAD_UNCHANGED,
+    )
+    img = cvzone.overlayPNG(img, imgGraphics, (0, 0))
+
     results = model(imgregion, stream=True)
+
+    detections = np.empty((0, 5))
+
     for r in results:
         boxes = r.boxes
         for box in boxes:
@@ -118,16 +135,63 @@ while True:
             currentclass = classNames[cls]
 
             if currentclass in ["car", "truck", "motorbike", "bus"] and conf > 0.3:
-                cvzone.putTextRect(
-                    img,
-                    f"{currentclass} {conf}",
-                    (max(0, x1), max(35, y1)),
-                    scale=0.6,
-                    thickness=1,
-                    offset=3,
+                # cvzone.putTextRect(
+                #     img,
+                #     f"{currentclass} {conf}",
+                #     (max(0, x1), max(35, y1)),
+                #     scale=0.6,
+                #     thickness=1,
+                #     offset=3,
+                # )
+                # cvzone.cornerRect(img, (x1, y1, w, h), l=10, t=3, rt=5)
+
+                currentArray = np.array([x1, y1, x2, y2, conf])
+                detections = np.vstack((detections, currentArray))
+
+    resultsTrack = tracker.update(detections)
+
+    cv2.line(img, (limits[0], limits[1]), (limits[2], limits[3]), (0, 0, 255), 5)
+
+    for result in resultsTrack:
+        x1, y1, x2, y2, id = result
+        print(result)
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        w, h = x2 - x1, y2 - y1
+        cvzone.cornerRect(img, (x1, y1, w, h), l=10, t=3, rt=2, colorR=(255, 0, 255))
+        cvzone.putTextRect(
+            img,
+            f"{int(id)}",
+            (max(0, x1), max(35, y1)),
+            scale=2,
+            thickness=3,
+            offset=10,
+        )
+
+        cx, cy = x1 + w // 2, y1 + h // 2
+        cv2.circle(img, (cx, cy), 3, (255, 0, 0), -1)
+
+        if limits[0] < cx < limits[2] and limits[1] - 20 < cy < limits[3] + 20:
+            if totalcounts.count(id) == 0:
+                totalcounts.append(id)
+                cv2.line(
+                    img, (limits[0], limits[1]), (limits[2], limits[3]), (0, 255, 0), 5
                 )
-                cvzone.cornerRect(img, (x1, y1, w, h), l=10, t=3)
+
+    # cvzone.putTextRect(
+    #     img,
+    #     f" Count: {len(totalcounts)}",
+    #     (50, 50),
+    # )
+    cv2.putText(
+        img,
+        str(len(totalcounts)),
+        (255, 100),
+        cv2.FONT_HERSHEY_PLAIN,
+        5,
+        (0, 0, 255),
+        8,
+    )
 
     cv2.imshow("Image", img)
     # cv2.imshow("Image REgion", imgregion)
-    cv2.waitKey(0)
+    cv2.waitKey(1)
